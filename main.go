@@ -4,8 +4,12 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	// "io/ioutil"
+
+	// "io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -67,7 +71,7 @@ func accessTokenCall() (accessToken interface{}, err error) {
 func getTasksHandler(response http.ResponseWriter, request *http.Request) {
 
 	accessToken, err := accessTokenCall()
-	// fmt.Println(accessToken)
+	fmt.Println(accessToken)
 	if err != nil || accessToken == nil {
 		fmt.Println("Error In Getting Token:", err)
 	}
@@ -76,12 +80,7 @@ func getTasksHandler(response http.ResponseWriter, request *http.Request) {
 
 	json.NewDecoder(request.Body).Decode(&idBody)
 	if idBody.Id == "" {
-		response.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(response).Encode(map[string]string{
-			"Success": "False",
-			"Message": "Do Provide Required Data",
-		})
-		fmt.Println("Do Provide Required Data")
+		handleError(response, "Do Provide The ID")
 		return
 	}
 	fmt.Println(idBody.Id)
@@ -132,11 +131,13 @@ func getTasksHandler(response http.ResponseWriter, request *http.Request) {
 	}
 	// fmt.Println(getTaskData)
 	response.Header().Set("Content-Type", "application/json")
+	response.Header().Set("Access-Control-Allow-Origin", "*")
 
 	if len(getTaskData) == 0 {
-		json.NewEncoder(response).Encode(map[string]string{
+		json.NewEncoder(response).Encode(map[string]interface{}{
 			"Success": "True",
 			"Message": "No Remaining Tasks",
+			"Data":    getTaskData,
 		})
 		return
 	}
@@ -144,9 +145,9 @@ func getTasksHandler(response http.ResponseWriter, request *http.Request) {
 
 }
 
-func login(response http.ResponseWriter, request *http.Request) {
+// func login(response http.ResponseWriter, request *http.Request) {
 
-}
+// }
 
 func ValidateLogin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -164,47 +165,103 @@ func ValidateLogin(next http.Handler) http.Handler {
 
 	})
 }
+func handleError(response http.ResponseWriter, message string) {
+	response.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(response).Encode(map[string]string{
+		"Success": "False",
+		"Message": message,
+	})
+	fmt.Println(message)
+}
+
 func fetchDataAndForm(response http.ResponseWriter, request *http.Request) {
 
 	var requestBody map[string]interface{}
 	json.NewDecoder(request.Body).Decode(&requestBody)
+
+	fmt.Println(requestBody)
+
 	if requestBody == nil {
-		json.NewEncoder(response).Encode(map[string]string{
-			"Success": "False",
-			"Message": "Do Provide Required Data",
-		})
-		fmt.Println("Do Provide Required Data")
+		handleError(response, "Do Provide Required Data")
 		return
 	}
 
-	id := requestBody["Id"].(string)
-	formId := requestBody["formId"].(string)
-	processDefinitionKey := requestBody["processDefinitionKey"].(string)
-	formVersion := requestBody["formVersion"].(string)
+	lowerCaseRequestBody := make(map[string]interface{})
+	for key, value := range requestBody {
+		lowerCaseKey := strings.ToLower(key)
+		lowerCaseRequestBody[lowerCaseKey] = value
+	}
 
-	if id == "" || formId == "" || processDefinitionKey == "" || formVersion == "" {
-		json.NewEncoder(response).Encode(map[string]string{
-			"Success": "False",
-			"Message": "Provide Required Details",
-		})
+	requiredKeys := []string{"id", "formid", "processdefinitionkey", "formversion"}
+
+	for _, key := range requiredKeys {
+		if _, ok := lowerCaseRequestBody[key]; !ok {
+			handleError(response, "Do Provide "+key)
+			return
+		}
+	}
+
+	id, ok := lowerCaseRequestBody["id"].(string)
+	if !ok {
+		handleError(response, "Do Provide Id In String")
+		return
+	}
+	formId, ok := lowerCaseRequestBody["formid"].(string)
+	if !ok {
+		handleError(response, "Do Provide formId in String")
+		return
+	}
+	processDefinitionKey, ok := lowerCaseRequestBody["processdefinitionkey"].(string)
+	if !ok {
+		handleError(response, "Do Provide processdefinitionkey in String")
 		return
 	}
 
+	formVersionTemp, ok := lowerCaseRequestBody["formversion"].(float64)
+	if !ok {
+		handleError(response, "Do Provide formVersion in Integer Format")
+		return
+	}
+	formVersion := int(formVersionTemp)
+
+	// if id == "" || formId == "" || processDefinitionKey == "" || formVersion == 0 {
+	// 	handleError(response, "Provide Required Details")
+	// 	return
+	// }
+
+	if id == ""{
+		handleError(response,"Id Unavailable")
+		return
+	}
+	if formId == ""{
+		handleError(response,"FormId Unavailable")
+		return
+	}
+	if processDefinitionKey == ""{
+		handleError(response,"processDefinitionKey Unavailable")
+		return
+	}
+	if formVersion ==0{
+		handleError(response,"formVersion Unavailable")
+		return
+	}
 	accessToken, err := accessTokenCall()
 	if err != nil || accessToken == nil {
 		fmt.Println("Error Getting Token:", err)
+		return
 	}
+
 	url := fmt.Sprintf("http://34.93.102.191:8082/v1/tasks/%s/variables/search", id)
 	method := "POST"
 
 	payload := strings.NewReader(``)
 
 	req, err := http.NewRequest(method, url, payload)
-
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
+
 	Token := fmt.Sprintf("Bearer %s", accessToken)
 	req.Header.Add("Content-Type", "application/json")
 	req.Header.Add("Accept", "application/json")
@@ -218,49 +275,31 @@ func fetchDataAndForm(response http.ResponseWriter, request *http.Request) {
 	defer res.Body.Close()
 
 	var taskVariable []map[string]string
+
 	json.NewDecoder(res.Body).Decode(&taskVariable)
-	// fmt.Println(taskVariable)
 
-	// var extractedData map[string]string
-
-	// }
-	// fmt.Println(extractedData)
-
-	// var extractedData map[string]interface{}
 	extractedData := make(map[string]interface{})
+	extractedData["id"]=id
 	for _, value := range taskVariable {
-		// extractedData[]
 		key := value["name"]
 		data := value["value"]
 		extractedData[key] = data
 	}
-	fmt.Println(extractedData)
 
-	//fetchFormSchema
-	// var schemaData map[string]interface{}
 	schemaData := fetchForm(accessToken.(string), formId, processDefinitionKey, formVersion)
 
-	// obj:=schemaData[0]
-
-	// components := (schemaData["components"]).([]interface{})
-
-	// fmt.Println(components[0])
-
-	// fmt.Println(schemaData)
-	// json.NewDecoder(schema).Decode(schemaData)
-
-	// fmt.Println(schema)
 	response.Header().Set("Content-Type", "application/json")
 	responseData := map[string]interface{}{
 		"data":   extractedData,
 		"schema": schemaData,
+		
 	}
 	json.NewEncoder(response).Encode(responseData)
-
 }
-func fetchForm(acessToken string, formIDD string, processDefinitionKey string, formVersion string) map[string]interface{} {
+
+func fetchForm(acessToken string, formIDD string, processDefinitionKey string, formVersion int) map[string]interface{} {
 	// FormVersion := fmt.Sprintf("%.0f", formVersion)
-	url := fmt.Sprintf("http://34.93.102.191:8082/v1/forms/%s?processDefinitionKey=%s&version=%s", formIDD, processDefinitionKey, formVersion)
+	url := fmt.Sprintf("http://34.93.102.191:8082/v1/forms/%s?processDefinitionKey=%s&version=%v", formIDD, processDefinitionKey, formVersion)
 	// fmt.Println(url)
 
 	method := "GET"
@@ -309,10 +348,7 @@ func completeHandler(response http.ResponseWriter, request *http.Request) {
 
 	// json.Unmarshal(data, &incData)
 	if incData.Id == "" {
-		json.NewEncoder(response).Encode(map[string]string{
-			"Success": "False",
-			"Message": "Invalid Id",
-		})
+		handleError(response, "Invalid Id")
 		return
 	}
 
@@ -326,13 +362,14 @@ func completeHandler(response http.ResponseWriter, request *http.Request) {
 
 	if TaskState == "" || !ok {
 		errorMessage, _ := responseData["message"].(string)
-		json.NewEncoder(response).Encode(map[string]string{
-			"Success": "False",
-			"Message": errorMessage,
-		})
+		handleError(response, errorMessage)
 		log.Println("Unable To Complete The Task")
 	} else {
-		json.NewEncoder(response).Encode(responseData)
+		json.NewEncoder(response).Encode(map[string]interface{}{
+			"Success": "True",
+			"Message": "Task Completed SuccessFully",
+			"Data":    responseData,
+		})
 	}
 
 }
@@ -387,29 +424,202 @@ func testHandler(response http.ResponseWriter, request *http.Request) {
 		emptyMap = append(emptyMap, temp)
 	}
 
-	fmt.Println(emptyMap)
+	// fmt.Println(emptyMap)
 	response.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(response).Encode(emptyMap)
 }
+func processHandler(response http.ResponseWriter, request *http.Request) {
+
+	var dataToken map[string]interface{}
+	json.NewDecoder(request.Body).Decode(&dataToken)
+
+	accessToken := dataToken["access_token"].(string)
+
+	// fmt.Println(accessToken)
+
+	url := "http://34.93.102.191:8082/v1/internal/processes"
+	method := "GET"
+
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	Token := fmt.Sprintf("Bearer %s", accessToken)
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Accept", "application/json")
+	req.Header.Add("Authorization", Token)
+
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	response.Header().Set("Content-Type", "application/json")
+
+	defer res.Body.Close()
+	var resData []map[string]interface{}
+	json.NewDecoder(res.Body).Decode(&resData)
+
+	// fmt.Println(resData)
+
+	json.NewEncoder(response).Encode(resData)
+
+}
+type Details struct{
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+func getToken(response http.ResponseWriter, request *http.Request) {
+	urll := "https://34.93.102.191:18080/auth/realms/camunda-platform/protocol/openid-connect/token"
+	method := "POST"
+	var reqData Details
+	json.NewDecoder(request.Body).Decode(&reqData)
+	fmt.Println(reqData)
+
+	data := url.Values{}
+	data.Set("client_id", "access_token")
+	data.Set("client_secret", "ZBKi3qEBDKHhszZfwwiFdsvq0pMS3OvH")
+	data.Set("grant_type", "password")
+	data.Set("username", reqData.Username)
+	data.Set("password", reqData.Password)
+
+	req, err := http.NewRequest(method, urll, strings.NewReader(data.Encode()))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+	// client := &http.Client{}
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	var tokenResponseData map[string]interface{}
+	json.NewDecoder(res.Body).Decode(&tokenResponseData)
+	response.Header().Set("Content-Type", "application/json")
+	response.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(response).Encode(map[string]interface{}{
+		"access_token":  tokenResponseData["access_token"],
+		"refresh_token": tokenResponseData["refresh_token"],
+	})
+
+	defer res.Body.Close()
+}
+
+func tlzVariable(response http.ResponseWriter,request *http.Request){
+	var idBody Id 
+	json.NewDecoder(request.Body).Decode(&idBody)
+	dataToSend:=fmt.Sprintf(`{
+		"Id":"%s"
+	}`,idBody.Id)
+	payload:=strings.NewReader(dataToSend)
+	fmt.Println(payload)
+	req,err:=http.NewRequest("POST","http://34.93.102.191:4005/getTasks",payload)
+	if err!=nil{
+		fmt.Println("Error:",err)
+	}
+	res,err:=client.Do(req)
+	if err!=nil{
+		fmt.Println("Error:",err)
+	}
+	var resData []map[string]interface{}
+	json.NewDecoder(res.Body).Decode(&resData)
+	
+	// var idP interface{}
+	// var formId interface{} 
+	// var processDefinitionKey interface{} 
+	// var formVersion interface{}
+	// var newReqData []map[string]interface{}
+	responseData := []interface{}{}
+	for _,value:=range resData{
+		var newReqData map[string]interface{}
+		idP:=value["id"]
+		formId:=value["formId"]
+		processDefinitionKey:=value["processDefinitionKey"]
+		formVersion:=value["formVersion"]
+		// fmt.Println(idP)
+		// fmt.Println(formVersion.(float64))
+		if formId==nil{
+			formId=""
+		}
+		if formVersion == nil{
+			formVersion=0.0
+		}
+
+		dataToSEnd:=fmt.Sprintf(`{
+			"id": "%s",
+			"formId": "%s",
+			"processDefinitionKey": "%s",
+			"formVersion": %f
+	   }`,idP,formId,processDefinitionKey,formVersion)
+	//    fmt.Println(dataToSEnd)
+		payload:=strings.NewReader(dataToSEnd)
+		req,err:=http.NewRequest("POST","http://34.93.102.191:4005/fetchForm",payload)
+		if err!=nil{
+			fmt.Println("Error:",err)
+		}
+		res,err:=client.Do(req)
+		if err!=nil{
+			fmt.Println("Error:",err)
+		}
+		// resBody,err:=ioutil.ReadAll(res.Body)
+		// fmt.Println(string(resBody))
+		json.NewDecoder(res.Body).Decode(&newReqData)
+		// fmt.Println(newReqData)
+		responseData=append(responseData,newReqData)
+	}
+	response.Header().Set("Content-Type","application/json")
+	// fmt.Println(responseData)
+	json.NewEncoder(response).Encode(map[string]interface{}{
+		"success":"true",
+		"data":responseData,
+	})
+
+
+
+}
 func main() {
 	r := mux.NewRouter()
-	s := r.PathPrefix("/api").Subrouter()
-	s.Use(ValidateLogin)
-	s.HandleFunc("/login", login).Methods("POST")
+	// s := r.PathPrefix("/api").Subrouter()
+	// s.Use(ValidateLogin)
+	// s.HandleFunc("/login", login).Methods("POST")
 	r.HandleFunc("/getTasks", getTasksHandler).Methods("POST")
 	r.HandleFunc("/fetchForm", fetchDataAndForm).Methods("POST")
 	r.HandleFunc("/completeTask", completeHandler).Methods("POST")
+	r.HandleFunc("/process", processHandler).Methods("POST")
 	r.HandleFunc("/test", testHandler).Methods("POST")
+	r.HandleFunc("/getToken",getToken).Methods("POST")
+	r.HandleFunc("/tlzVariable",tlzVariable).Methods("POST")
 
-	c := cors.Default()
+
+	// handler := cors.Default().Handler(r)
+
+	// s := &http.Server{
+	// 	Addr:    ":4005",
+	// 	Handler: handler,
+	// }
+
+	c := cors.New(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowCredentials: true,
+		AllowedMethods:   []string{"GET", "POST", "PATCH"},
+		// AllowedMethods: []string{"*"},
+		AllowedHeaders: []string{"Authorization", "Content-Type"},
+		// AllowedHeaders: []string{"*"},
+	})
+
 	handler := c.Handler(r)
-
-	port := ":4001"
-	t := &http.Server{
+	port := ":4005"
+	s := &http.Server{
 		Addr:    port,
 		Handler: handler,
 	}
-	log.Printf("Server is Running in Port%s", port)
-	log.Fatal(t.ListenAndServe())
-}
 
+	log.Printf("Server is Running in Port %v", port)
+	log.Fatal(s.ListenAndServe())
+}
